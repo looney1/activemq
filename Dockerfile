@@ -1,9 +1,9 @@
-FROM openjdk:8-jre-alpine
+FROM openjdk:11.0-jre
 
-MAINTAINER Architecture
+LABEL MAINTAINER="Architecture"
 
-ENV JDK_VERSION=1.8.0 \
-    ACTIVEMQ_VERSION=5.15.13 \
+ENV JDK_VERSION=11.0 \
+    ACTIVEMQ_VERSION=5.16.0 \
     ACTIVEMQ_HOME=/opt/activemq    
 
 ENV ACTIVEMQ=apache-activemq-${ACTIVEMQ_VERSION} \
@@ -13,32 +13,57 @@ ENV ACTIVEMQ=apache-activemq-${ACTIVEMQ_VERSION} \
     ACTIVEMQ_MQTT=1883 \
     ACTIVEMQ_WS=61614 \
     ACTIVEMQ_UI=8161 \
-    SHA512_VAL=4a237fe2d3cdfbc1b5b45c92a5aab0d009acbfe5383c188b9691100e2e47de0548a1c24e0d8382a88c4600cd2b8792ce75e9be7d88de55f86b0bde7c9a92c285
+    ACTIVEMQ_JMX=11099 \
+    SHA512_VAL=999928176e57b0805e8a53834e7f4eb648baf271a0c60de31ebd95fa63f2b089aa41c2ef7353790835e2e8cc39c4b778f535b38e6dc0c67a79c3c1da335c4a0a
 
 RUN set -x && \
-    mkdir -p /opt && \
-    apk --update add --virtual build-dependencies curl tar && \
-    curl -L https://archive.apache.org/dist/activemq/${ACTIVEMQ_VERSION}/${ACTIVEMQ}-bin.tar.gz -o ${ACTIVEMQ}-bin.tar.gz
+    apt-get update && apt-get upgrade && \
+    apt-get install -y --no-install-recommends curl tar procps jq && \
+    apt-get autoremove && \
+    apt-get clean && \
+    rm -rf /var/cache/apt/* && \
+    rm -rf /var/lib/apt/lists/*
 
-# Validate checksum
-RUN echo "$(sha512sum ${ACTIVEMQ}-bin.tar.gz | awk '{print($1)}')"
-RUN if [ "$SHA512_VAL" != "$(sha512sum ${ACTIVEMQ}-bin.tar.gz | awk '{print($1)}')" ];\
+
+RUN curl -L https://archive.apache.org/dist/activemq/${ACTIVEMQ_VERSION}/${ACTIVEMQ}-bin.tar.gz -o ${ACTIVEMQ}-bin.tar.gz && \
+    if [ "$SHA512_VAL" != "$(sha512sum ${ACTIVEMQ}-bin.tar.gz | awk '{print($1)}')" ];\
     then \
-        echo "sha512 values doesn't match! exiting."  && \
+        echo "sha512 values doesn't match! exiting." \
         exit 1; \
     fi;
 
 RUN tar xzf $ACTIVEMQ-bin.tar.gz -C /opt && \
+    rm $ACTIVEMQ-bin.tar.gz && \
     ln -s /opt/$ACTIVEMQ $ACTIVEMQ_HOME && \
-    addgroup -S activemq && adduser -S -H -G activemq -h $ACTIVEMQ_HOME activemq && \
+    addgroup --system activemq && \
+    adduser --system --group activemq && \
     chown -R activemq:activemq /opt/$ACTIVEMQ && \
     chown -h activemq:activemq $ACTIVEMQ_HOME && \
-    apk del build-dependencies && \
-    rm -rf /var/cache/apk/*
+    usermod --home $ACTIVEMQ_HOME activemq && \
+    sed -i 's/127.0.0.1/0.0.0.0/g' /${ACTIVEMQ_HOME}/conf/jetty.xml && \
+    chmod 400 /${ACTIVEMQ_HOME}/conf/jmx.password
+
+COPY --chown=activemq:activemq env /${ACTIVEMQ_HOME}/bin/
+COPY --chown=activemq:activemq activemq.xml /${ACTIVEMQ_HOME}/conf/
+COPY --chown=activemq:activemq log4j.properties /${ACTIVEMQ_HOME}/conf/
+COPY --chown=activemq:activemq health_check.sh /${ACTIVEMQ_HOME}/bin/
 
 USER activemq
 
 WORKDIR $ACTIVEMQ_HOME
-EXPOSE $ACTIVEMQ_TCP $ACTIVEMQ_AMQP $ACTIVEMQ_STOMP $ACTIVEMQ_MQTT $ACTIVEMQ_WS $ACTIVEMQ_UI
+EXPOSE $ACTIVEMQ_TCP $ACTIVEMQ_AMQP $ACTIVEMQ_STOMP $ACTIVEMQ_MQTT $ACTIVEMQ_WS $ACTIVEMQ_UI $ACTIVEMQ_JMX
 
-CMD ["/bin/sh", "-c", "bin/activemq console"]
+HEALTHCHECK --interval=1s \
+            --start-period=10s \
+            CMD ( \
+                    curl \
+                        --silent \
+                        --show-error \
+                        "http://localhost:8161/api/jolokia/exec/org.apache.activemq:type=Broker,brokerName=localhost,service=Health/healthStatus" \
+                    # copy output to fd3 (grep will consume fd1)
+                    | tee /dev/fd/3 \
+                    | grep --silent 'Good' \
+                # show curl output, from fd3
+                ) 3>&1
+
+CMD ["/bin/sh", "-c", "/opt/activemq/bin/activemq console"]

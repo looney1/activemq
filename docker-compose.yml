@@ -1,8 +1,13 @@
-activemq-service:
-  build: ./$AMQ_VERSION
-  environment:
-    - TZ=CEST
-  ports:
-    - "8161:8161"
-  expose:
-    - 8161
+--- 
+services: 
+  activemq: 
+    environment: 
+      - TZ=MDT
+    expose: 
+      - 8161
+      - 61616
+    image: activemq
+    ports: 
+      - "8161:8161"
+      - "61616:61616"
+version: "3.8"

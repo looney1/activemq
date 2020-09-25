@@ -1,0 +1,91 @@
+--- 
+apiVersion: apps/v1
+kind: Deployment
+metadata: 
+  labels: 
+    app: activemq
+    version: "${IMAGE_VERSION}"
+  name: activemq
+spec: 
+  replicas: ${REPLICAS}
+  selector: 
+    matchLabels: 
+      app: activemq
+  template: 
+    metadata: 
+      annotations: 
+        beeline.framework: "Apache ActiveMQ"
+        beeline.language: "Java 11.0.8"
+        beeline.owner: Architecture
+        beeline.ownerContact: Architecture@beeline.com
+      labels: 
+        app: activemq
+        gitsha: "${GITSHA}"
+        timestamp: "${TIMESTAMP}"
+        version: "${IMAGE_VERSION}"
+    spec: 
+      containers: 
+        - 
+          env: 
+            - 
+              name: IQN_APP_NAME
+              value: activemq
+            - 
+              name: IQN_ENVIRONMENT_NAME
+              valueFrom: 
+                fieldRef: 
+                  fieldPath: metadata.namespace
+            - 
+              name: IMAGE_VERSION
+              value: "${IMAGE_VERSION}"
+            - 
+              name: CONTRAST_ENABLED
+              valueFrom: 
+                configMapKeyRef: 
+                  key: contrast-enabled
+                  name: activemq
+          image: "docker-repo.iqncloud.com:5000/activemq:${IMAGE_VERSION}"
+          livenessProbe: 
+            exec: 
+              command: 
+                - /bin/bash
+                - ./bin/health_check.sh
+            failureThreshold: 5
+            initialDelaySeconds: 120
+            periodSeconds: 30
+            timeoutSeconds: 5
+          name: activemq
+          ports: 
+            - 
+              containerPort: 61616
+            - 
+              containerPort: 8161
+            - 
+              containerPort: 5672
+            - 
+              containerPort: 11099
+          readinessProbe: 
+            exec: 
+              command: 
+                - /bin/bash
+                - ./bin/health_check.sh
+            failureThreshold: 5
+            periodSeconds: 30
+            timeoutSeconds: 5
+          resources: 
+            limits: 
+              cpu: 1
+              memory: 1Gi
+            requests: 
+              cpu: 100m
+          volumeMounts: 
+            - 
+              mountPath: /opt/activemq/data
+              name: activemq-data
+      imagePullSecrets: 
+        - 
+          name: iqn-docker-repo
+      volumes: 
+        - 
+          emptyDir: {}
+          name: activemq-data

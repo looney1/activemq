@@ -1,0 +1,31 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: activemq
+  labels:
+    app: activemq
+spec:
+  type: NodePort
+  ports:
+    # the port that this service should serve on
+  - port: 8161
+    targetPort: 8161
+    name: "console"
+  - port: 61616
+    targetPort: 61616
+    name: "tcp"
+  - port: 5672
+    targetPort: 5672
+    name: "ampq"
+  - port: 11099
+    targetPort: 11099
+    name: "jmx"
+  selector:
+    app: activemq
+
+#    61616 TCP
+#    8161  UI
+#    5672  AMQP  (since `activemq:5.12.1`)
+#    61613 STOMP (since `activemq:5.12.1`)
+#    1883  MQTT  (since `activemq:5.12.1`)
+#    61614 WS    (since `activemq:5.12.1`)

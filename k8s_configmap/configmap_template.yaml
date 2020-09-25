@@ -1,0 +1,9 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: activemq
+  namespace: {{ namespace }}
+data:
+  iqn-environmentname: {{ namespace }}
+  iqn-appname: activemq
+  contrast-enabled: '{{ contrast_enabled }}'
